@@ -3,6 +3,14 @@ uniform float iTime;
 uniform vec2 iResolution;
 uniform int scene;
 
+uniform int quality;
+vec3 orbCenter(int id){
+ float t=iTime;
+ if(id==0)return vec3(sin(sin(t*.2)+t*.4)*4.,sin(sin(t*1.3)+t*.2)*2.,14.+t*12.+cos(t*.5)*8.);
+ return vec3(cos(t*.34)*3.,sin(t*.8)*1.6,18.+t*12.+sin(t*.4)*5.);
+}
+float orbRadius(int id){return id==0?.1:.14;}
+vec3 orbColor(){return vec3(5.,2.,1.);}
 // Desert adapted from the MIT-licensed shader supplied with the project:
 // https://www.shadertoy.com/view/3cXyzB
 vec3 desert(vec2 uv){
@@ -11,9 +19,7 @@ vec3 desert(vec2 uv){
  uv+=cos(t*.3)*vec2(.4,.2);
  for(int i=0;i<128;i++){
   vec3 p=vec3(uv*d,d+zt);
-  e=length(p-vec3(sin(sin(t*.2)+t*.4)*4.,sin(sin(t*1.3)+t*.2)*2.,14.+zt+cos(t*.5)*8.))-.1;
-  // A second visitor follows a distinct orbit.
-  e=min(e,length(p-vec3(cos(t*.34)*3.,sin(t*.8)*1.6,18.+zt+sin(t*.4)*5.))-.14);
+  e=min(length(p-orbCenter(0))-orbRadius(0),length(p-orbCenter(1))-orbRadius(1));
   p.x-=xt;
   float frequency=.02;
   for(int j=0;j<7;j++){
@@ -27,40 +33,75 @@ vec3 desert(vec2 uv){
  vec3 x=vec3(5.,2.,1.)*brightness*brightness/max(d, .01)/1000./max(length(uv),.08);
  return 1.-2./(exp(2.*min(x,vec3(20.)))+1.);
 }
-float waves(vec2 p){
- return sin(p.x*.55+iTime*.7)*.24+sin(p.y*.8-iTime)*.18+sin(p.x*1.8+p.y*1.3+iTime*1.5)*.07;
+// Wave model adapted from afl_ext 2024, public domain, supplied by user.
+// https://www.shadertoy.com/view/M3fGDl
+float waves(vec2 position,int iterations){
+ position=position*.1+iTime*.1;
+ float phase=6.,speed=2.,weight=1.,w=0.,ws=0.;
+ for(int i=0;i<37;i++){
+  if(i>=iterations)break;
+  float angle=float(i)*12.;vec2 direction=vec2(sin(angle),cos(angle));
+  float x=dot(direction,position)*phase+iTime*speed;
+  float wave=exp(sin(x)-1.);
+  position-=direction*wave*cos(x)*weight*.058;
+  w+=wave*weight;ws+=weight;weight*=.8;phase*=1.18;speed*=1.07;
+ }
+ return w/ws*2.1-2.1;
+}
+vec3 skyColor(vec3 ray){
+ vec3 sunDir=normalize(vec3(.8,.12,1.));
+ float sun=max(dot(ray,sunDir),0.);
+ return mix(vec3(.06,.15,.28),vec3(.55,.36,.22),exp(-abs(ray.y)*5.))
+       +vec3(1.,.65,.3)*pow(sun,64.)*.5+vec3(8.,5.,2.)*pow(sun,1228.);
+}
+// Physical spheres and inverse-square halos use the same world positions as desert.
+vec3 orbEmission(vec3 origin,vec3 ray,float limit){
+ vec3 result=vec3(0.);
+ for(int j=0;j<2;j++){
+  vec3 delta=orbCenter(j)-origin;float along=dot(delta,ray);
+  if(along>0. && along<limit){
+   float closest2=max(dot(delta,delta)-along*along,0.);
+   float radius=orbRadius(j);
+   result+=orbColor()*(.018/(closest2+.025)+2.*(1.-smoothstep(radius*radius,radius*radius*1.3,closest2)));
+  }
+ }
+ return result;
 }
 vec3 ocean(vec2 uv){
- vec3 ro=vec3(0.,2.4,iTime*2.);
- vec3 rd=normalize(vec3(uv.x,uv.y-.15,1.5));
- vec3 moon=normalize(vec3(.5,.42,1.));
- float light=max(dot(rd,moon),0.);
- vec3 sky=mix(vec3(.025,.055,.11),vec3(.12,.22,.32),exp(-abs(rd.y)*4.));
- sky+=vec3(.7,.83,1.)*smoothstep(.999,.9997,light);
- sky+=vec3(.12,.18,.26)*pow(light,24.);
- vec3 color=sky;
- if(rd.y<0.){
-  float distance=0.;vec3 p=ro;
-  for(int i=0;i<100;i++){
-   p=ro+rd*distance;float gap=p.y-waves(p.xz);
-   if(gap<.015||distance>180.)break;
-   distance+=max(.02,gap*.45);
+ // Match desert's forward/lateral flight and camera sway exactly.
+ uv+=cos(iTime*.3)*vec2(.4,.2);
+ vec3 ro=vec3(-iTime*13.,0.,iTime*12.);
+ vec3 rd=normalize(vec3(uv,1.));
+ // Shift the wave field laterally, while visitors retain camera-relative X motion.
+ vec3 waterOrigin=vec3(0.,0.,iTime*12.);
+ vec3 color=skyColor(rd);float hit=1000.;
+ int marchOctaves=quality==0?12:24;int normalOctaves=quality==0?18:37;
+ if(rd.y<-.001){
+  float distance=0.;bool found=false;vec3 p=waterOrigin;
+  for(int i=0;i<160;i++){
+   p=waterOrigin+rd*distance;
+   float gap=p.y-waves(p.xz+vec2(ro.x,0.),marchOctaves);
+   if(gap<.003){found=true;break;}
+   distance+=max(.003,gap*.7);
+   if(distance>350.)break;
   }
-  if(distance<180.){
-   float eps=.04;float h=waves(p.xz);
-   vec3 n=normalize(vec3(h-waves(p.xz+vec2(eps,0.)),eps,h-waves(p.xz+vec2(0.,eps))));
-   vec3 reflected=reflect(rd,n);
-   float shine=pow(max(dot(reflected,moon),0.),140.);
-   float fresnel=pow(1.-max(dot(-rd,n),0.),5.);
-   color=mix(vec3(.008,.08,.11),sky,.3+fresnel*.6)+shine*vec3(.75,.86,1.);
-   color=mix(color,sky,1.-exp(-distance*.012));
+  if(found){
+   hit=distance;float e=.01;vec2 wp=p.xz+vec2(ro.x,0.);
+   float h=waves(wp,normalOctaves);
+   vec3 n=normalize(vec3(h-waves(wp+vec2(e,0.),normalOctaves),e,h-waves(wp+vec2(0.,e),normalOctaves)));
+   n=normalize(mix(n,vec3(0.,1.,0.),.8*min(1.,sqrt(distance*.01)*1.1)));
+   vec3 reflected=normalize(reflect(rd,n));reflected.y=abs(reflected.y);
+   float fresnel=.04+.96*pow(1.-max(dot(-rd,n),0.),5.);
+   color=vec3(.01,.10,.14)*(1.-fresnel)+skyColor(reflected)*fresnel;
+   color+=orbEmission(p+n*.02,reflected,1000.)*fresnel;
+   for(int j=0;j<2;j++){
+    vec3 delta=orbCenter(j)-p;
+    color+=orbColor()*.6*max(dot(n,normalize(delta)),0.)/(1.+dot(delta,delta)*.35);
+   }
+   color=mix(color,skyColor(rd),1.-exp(-distance*.006));
   }
  }
- for(int j=0;j<2;j++){
-  float f=float(j);vec2 center=vec2(sin(iTime*.4+f*2.)*.45,.08+sin(iTime*.65+f*2.)*.13);
-  float r=length(uv-center);vec3 tint=mix(vec3(.3,.85,1.),vec3(1.,.6,.25),f);
-  color+=tint*(.0015/max(r*r,.001)+.8*smoothstep(.035,.025,r));
- }
- return color;
+ color+=orbEmission(waterOrigin,rd,hit);
+ return color/(1.+color);
 }
 void main(){vec2 uv=(2.*gl_FragCoord.xy-iResolution)/iResolution.y;vec3 color=scene==0?desert(uv):ocean(uv);gl_FragColor=vec4(pow(max(color,vec3(0.)),vec3(.85)),1.);}
