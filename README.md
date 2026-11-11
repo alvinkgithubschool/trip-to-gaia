@@ -20,3 +20,7 @@ This is an environment prototype. The remaining three environments, soundtrack, 
 ## Debugging and optimisation
 
 The debug panel starts visible. Press **D** to toggle it, **Q** to switch water wave quality (12/18 versus 24/37 wave iterations for marching/normals), and **L** to log a snapshot. `gaia-debug.log` records GPU/driver details, shader failures, scene/quality changes, OpenGL errors and two-second FPS/average/max frame time samples. Timings include swap/vsync and overlay cost; they are not isolated GPU timings. Compare the same scene and resolution with the overlay hidden when profiling. Logs append across launches and are excluded from Git.
+
+Both scenes share a raised, gently bobbing camera and raised orb paths. Desert sand grain/ripples modulate color without changing dunes. Ocean whitecaps follow wave height and slope without changing wave geometry. Ocean marching skips air above the maximum water height, and distant normals use fewer wave octaves.
+
+For repeatable performance samples: `./gaia --ocean --seconds 10` or `./gaia --ocean --low --seconds 10`. Close other Gaia windows first to avoid competing GPU workloads. Compare logs at the same window size; frame times include vsync.

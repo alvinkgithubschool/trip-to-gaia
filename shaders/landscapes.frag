@@ -6,9 +6,11 @@ uniform int scene;
 uniform int quality;
 vec3 orbCenter(int id){
  float t=iTime;
- if(id==0)return vec3(sin(sin(t*.2)+t*.4)*4.,sin(sin(t*1.3)+t*.2)*2.,14.+t*12.+cos(t*.5)*8.);
- return vec3(cos(t*.34)*3.,sin(t*.8)*1.6,18.+t*12.+sin(t*.4)*5.);
+ if(id==0)return vec3(sin(sin(t*.2)+t*.4)*4.,2.5+sin(sin(t*1.3)+t*.2)*2.+sin(t*1.7)*.12,14.+t*12.+cos(t*.5)*8.);
+ return vec3(cos(t*.34)*3.,2.5+sin(t*.8)*1.6+sin(t*1.7+1.)*.12,18.+t*12.+sin(t*.4)*5.);
 }
+float cameraHeight(){return .55+sin(iTime*.85)*.09+sin(iTime*1.6)*.035;}
+float grain(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float orbRadius(int id){return id==0?.1:.14;}
 vec3 orbColor(){return vec3(5.,2.,1.);}
 // Desert adapted from the MIT-licensed shader supplied with the project:
@@ -16,22 +18,34 @@ vec3 orbColor(){return vec3(5.,2.,1.);}
 vec3 desert(vec2 uv){
  float d=0.,s=0.,e=1.,brightness=0.;
  float t=iTime,zt=t*12.,xt=t*13.;
+ vec3 firstOrb=orbCenter(0),secondOrb=orbCenter(1);
+ float nearestGround=1e5;vec2 sandPosition=vec2(0.);float sandDistance=0.;
  uv+=cos(t*.3)*vec2(.4,.2);
  for(int i=0;i<128;i++){
-  vec3 p=vec3(uv*d,d+zt);
-  e=min(length(p-orbCenter(0))-orbRadius(0),length(p-orbCenter(1))-orbRadius(1));
+  vec3 p=vec3(uv*d,d+zt)+vec3(0.,cameraHeight(),0.);
+  e=min(length(p-firstOrb)-orbRadius(0),length(p-secondOrb)-orbRadius(1));
+  vec2 surfacePosition=p.xz-vec2(xt,0.);
   p.x-=xt;
   float frequency=.02;
   for(int j=0;j<7;j++){
    p+=abs(dot(sin(p*frequency),vec3(.12)))/frequency;
    frequency*=2.;
   }
+  float ground=abs(1.+p.y*.6);
+  if(ground<nearestGround){nearestGround=ground;sandPosition=surfacePosition;sandDistance=d;}
   s=max(.005,min(e,min(1.+p.y*.6,5.-p.y*.05)));
   d+=s;brightness+=s+3./max(abs(e),.025);
  }
  uv+=uv.yx*.7+.2-vec2(-1.,.1);
  vec3 x=vec3(5.,2.,1.)*brightness*brightness/max(d, .01)/1000./max(length(uv),.08);
- return 1.-2./(exp(2.*min(x,vec3(20.)))+1.);
+ vec3 base=1.-2./(exp(2.*min(x,vec3(20.)))+1.);
+ // Material-only modulation: keep the original distance field and dune silhouettes.
+ float fade=exp(-sandDistance*.035)*(1.-smoothstep(.0,.6,nearestGround));
+ float ripples=sin(sandPosition.x*21.+sin(sandPosition.y*2.)*2.);
+ float sandGrain=grain(floor(sandPosition*180.));
+ float material=.94+.045*ripples+.045*(sandGrain-.5);
+ return base*mix(vec3(1.),vec3(material,material*.985,material*.95),fade);
+
 }
 // Wave model adapted from afl_ext 2024, public domain, supplied by user.
 // https://www.shadertoy.com/view/M3fGDl
@@ -70,14 +84,15 @@ vec3 orbEmission(vec3 origin,vec3 ray,float limit){
 vec3 ocean(vec2 uv){
  // Match desert's forward/lateral flight and camera sway exactly.
  uv+=cos(iTime*.3)*vec2(.4,.2);
- vec3 ro=vec3(-iTime*13.,0.,iTime*12.);
+ vec3 ro=vec3(-iTime*13.,cameraHeight(),iTime*12.);
  vec3 rd=normalize(vec3(uv,1.));
  // Shift the wave field laterally, while visitors retain camera-relative X motion.
- vec3 waterOrigin=vec3(0.,0.,iTime*12.);
+ vec3 waterOrigin=vec3(0.,cameraHeight(),iTime*12.);
  vec3 color=skyColor(rd);float hit=1000.;
  int marchOctaves=quality==0?12:24;int normalOctaves=quality==0?18:37;
  if(rd.y<-.001){
-  float distance=0.;bool found=false;vec3 p=waterOrigin;
+  // Waves never exceed Y=0: skip empty air analytically.
+  float distance=-waterOrigin.y/rd.y;bool found=false;vec3 p=waterOrigin;
   for(int i=0;i<160;i++){
    p=waterOrigin+rd*distance;
    float gap=p.y-waves(p.xz+vec2(ro.x,0.),marchOctaves);
@@ -87,8 +102,10 @@ vec3 ocean(vec2 uv){
   }
   if(found){
    hit=distance;float e=.01;vec2 wp=p.xz+vec2(ro.x,0.);
-   float h=waves(wp,normalOctaves);
-   vec3 n=normalize(vec3(h-waves(wp+vec2(e,0.),normalOctaves),e,h-waves(wp+vec2(0.,e),normalOctaves)));
+   // High frequencies are invisible at distance; retain the near-field quality setting.
+   int detail=distance>90.?12:(distance>35.?18:normalOctaves);
+   float h=waves(wp,detail);
+   vec3 n=normalize(vec3(h-waves(wp+vec2(e,0.),detail),e,h-waves(wp+vec2(0.,e),detail)));
    n=normalize(mix(n,vec3(0.,1.,0.),.8*min(1.,sqrt(distance*.01)*1.1)));
    vec3 reflected=normalize(reflect(rd,n));reflected.y=abs(reflected.y);
    float fresnel=.04+.96*pow(1.-max(dot(-rd,n),0.),5.);
@@ -98,6 +115,11 @@ vec3 ocean(vec2 uv){
     vec3 delta=orbCenter(j)-p;
     color+=orbColor()*.6*max(dot(n,normalize(delta)),0.)/(1.+dot(delta,delta)*.35);
    }
+   // Whitecaps follow high, steep parts of the existing wave field; no displacement.
+   float crest=smoothstep(-1.05,-.55,h);
+   float breakup=.65+.35*sin(wp.x*8.+sin(wp.y*6.)+iTime);
+   float foam=crest*breakup*(.35+.65*(1.-n.y));
+   color=mix(color,vec3(.88,.94,.96),clamp(foam,0.,.8));
    color=mix(color,skyColor(rd),1.-exp(-distance*.006));
   }
  }
