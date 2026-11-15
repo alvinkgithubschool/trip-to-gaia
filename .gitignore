@@ -10,3 +10,6 @@ blender/*.blend1
 blender/*.blend2
 
 /BLENDER_REBUILD_PLAN.md
+
+# Editable project distributed as a GitHub release asset
+/blender/Trip_to_Gaia.blend

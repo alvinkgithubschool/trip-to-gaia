@@ -1,5 +1,7 @@
 # Trip to Gaia — Blender rebuild
 
+Download the editable `Trip_to_Gaia.blend` from the [Blender preview release](https://github.com/alvinkgithubschool/trip-to-gaia/releases/tag/blender-preview-v1). The binary is distributed as a release asset; the reproducible scripts are tracked here.
+
 Open `Trip_to_Gaia.blend` in Blender 5.3. Choose Gaia_Desert or Gaia_Ocean and play frames 1–240 (24 FPS, ten seconds). The original Scene is retained, and the original project file is untouched. Render with F12. No external assets or Python handlers are needed for playback.
 
 Rebuild in a fresh Blender session: open the Scripting workspace, load `build_gaia.py`, and Run Script. Keep `refine_gaia.py` beside it. This writes Trip_to_Gaia.blend beside the script. Existing Gaia scenes cause a safe refusal; existing unrelated scenes are retained. Alternatively run `blender --background --python build_gaia.py`. For six checks run `render_checks.py` after opening the output file. Background Eevee could not obtain Metal in this environment, so previews were rendered through the connected official Blender MCP window.
