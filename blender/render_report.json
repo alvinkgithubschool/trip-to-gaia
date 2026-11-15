@@ -1,0 +1,32 @@
+[
+  {
+    "scene": "Gaia_Desert",
+    "frame": 1,
+    "seconds": 2.5041065829991567
+  },
+  {
+    "scene": "Gaia_Desert",
+    "frame": 120,
+    "seconds": 2.253507500001433
+  },
+  {
+    "scene": "Gaia_Desert",
+    "frame": 240,
+    "seconds": 2.0552548750001733
+  },
+  {
+    "scene": "Gaia_Ocean",
+    "frame": 1,
+    "seconds": 2.1528065419988707
+  },
+  {
+    "scene": "Gaia_Ocean",
+    "frame": 120,
+    "seconds": 2.1113355420002335
+  },
+  {
+    "scene": "Gaia_Ocean",
+    "frame": 240,
+    "seconds": 1.993156500000623
+  }
+]
